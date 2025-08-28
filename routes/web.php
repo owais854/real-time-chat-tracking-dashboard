@@ -1,0 +1,95 @@
+<?php
+
+use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\ChatController;
+use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Broadcast;
+// --- Real-time Visitor Tracking ---
+use App\Http\Controllers\VisitorController;
+
+Route::post('/visitor/join', [VisitorController::class, 'join'])->name('visitor.join');
+Route::post('/visitor/leave', [VisitorController::class, 'leave'])->name('visitor.leave');
+Route::post('/visitor/ping', [VisitorController::class, 'ping'])->name('visitor.ping');
+Route::middleware('auth')->group(function() {
+    Route::get('/admin/visitors/active', [VisitorController::class, 'active'])->name('admin.visitors.active');
+    Route::post('/admin/visitors/prune', [VisitorController::class, 'prune'])->name('admin.visitors.prune');
+});
+// --- End Visitor Tracking ---
+
+
+/*
+|--------------------------------------------------------------------------
+| Web Routes
+|--------------------------------------------------------------------------
+|
+| Here is where you can register web routes for your application. These
+| routes are loaded by the RouteServiceProvider and all of them will
+| be assigned to the "web" middleware group. Make something great!
+|
+*/Route::get('/', function () {
+    return view('welcome');
+});
+
+Route::get('/dashboard', [\App\Http\Controllers\DashboardController::class, 'index'])
+    ->middleware(['auth', 'verified'])
+    ->name('dashboard');
+
+Route::middleware('auth')->group(function () {
+    Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
+    Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
+    Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
+    // Protected admin chat route
+    // Protected admin chat route
+    Route::get('/admin/chat', function () {
+        return view('admin-chat');
+    })->name('admin.chat');
+});
+
+// Chat routes
+Route::middleware(['web'])->group(function () {
+    // Broadcast authentication routes
+    Broadcast::routes(['middleware' => ['web']]);
+
+    // Public chat routes
+//    Route::get('/chat', function () {
+//        return view('visitor-chat');
+//    });
+    Route::get('/chat', function () {
+        if (!session()->has('visitor_id')) {
+            session(['visitor_id' => uniqid('visitor_')]);
+        }
+        return view('visitor-chat', [
+            'visitorId' => session('visitor_id')
+        ]);
+    });
+
+    // Chat API routes
+    Route::get('/messages', [ChatController::class, 'fetchMessages']);
+    Route::post('/messages', [ChatController::class, 'sendMessage']);
+    Route::get('/visitors', [ChatController::class, 'getActiveVisitors']);
+
+
+
+
+
+});
+
+Route::middleware('auth')->group(function () {
+    Route::get('/admin/visitors', function () {
+        return view('admin-visitors');
+    })->name('admin.visitors');
+});
+
+
+// Authentication routes (from auth.php)
+
+
+// Admin chat history and data (added by assistant)
+Route::middleware('auth')->group(function () {
+    Route::get('/admin/history', function () {
+        return view('admin-history');
+    })->name('admin.history');
+
+    Route::get('/admin/history/data', [VisitorController::class, 'historyData'])->name('admin.history.data');
+});
+require __DIR__.'/auth.php';

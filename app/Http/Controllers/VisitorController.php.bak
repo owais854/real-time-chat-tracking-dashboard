@@ -1,0 +1,100 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Events\VisitorJoined;
+use App\Events\VisitorLeft;
+use App\Models\Visitor;
+use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
+use Jenssegers\Agent\Agent;
+
+class VisitorController extends Controller
+{
+    // Called when a visitor opens the chat page
+    public function join(Request $request)
+    {
+        $sessionId = session()->getId();
+        $agent = new Agent();
+        $visitor = Visitor::updateOrCreate(
+            ['session_id' => $sessionId],
+            [
+                'ip_address' => $request->ip(),
+                'user_agent' => $request->header('User-Agent'),
+                'device_type' => $this->getDeviceType($agent),
+                'browser' => $agent->browser(),
+                'os' => $agent->platform(),
+                'current_url' => $request->fullUrl(),
+                'referrer' => $request->headers->get('referer'),
+                'last_activity' => now(),
+                'is_active' => true,
+            ]
+
+        );
+
+        broadcast(new VisitorJoined($visitor))->toOthers();
+
+        return response()->json(['ok' => true, 'id' => $visitor->id]);
+    }
+
+    // Heartbeat every ~20-30s from visitor
+    public function ping(Request $request)
+    {
+        $sessionId = session()->getId();
+        $v = Visitor::where('session_id', $sessionId)->first();
+        if ($v) {
+            $v->update(['last_activity' => now(), 'current_url' => $request->fullUrl(), 'is_active' => true]);
+        }
+        return response()->json(['ok' => true]);
+    }
+
+    // Called on page unload (best-effort)
+    public function leave(Request $request)
+    {
+        $sessionId = session()->getId();
+        $v = Visitor::where('session_id', $sessionId)->first();
+        if ($v) {
+            $v->update(['is_active' => false, 'last_activity' => now()]);
+            broadcast(new VisitorLeft($v->id))->toOthers();
+        }
+        return response()->json(['ok' => true]);
+    }
+
+    // Admin: list active
+    public function active()
+    {
+        // Prune older than 2 minutes as a safeguard
+        $this->pruneInternal();
+        return Visitor::where('is_active', true)->orderByDesc('last_activity')->get();
+    }
+
+    // Admin: manual prune endpoint (called periodically from admin UI)
+    public function prune()
+    {
+        $removed = $this->pruneInternal();
+        return response()->json(['removed' => $removed]);
+    }
+
+    private function pruneInternal(): int
+    {
+        $threshold = now()->subMinutes(2);
+        $expired = Visitor::where('is_active', true)->where('last_activity', '<', $threshold)->get();
+        $count = 0;
+        foreach ($expired as $v) {
+            $v->update(['is_active' => false]);
+            broadcast(new VisitorLeft($v->id))->toOthers();
+            $count++;
+        }
+        return $count;
+    }
+    private function getDeviceType($agent)
+    {
+        if ($agent->isMobile()) {
+            return 'mobile';
+        } elseif ($agent->isTablet()) {
+            return 'tablet';
+        } else {
+            return 'desktop';
+        }
+    }
+}
