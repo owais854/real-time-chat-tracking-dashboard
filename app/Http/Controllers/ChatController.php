@@ -8,9 +8,19 @@ use Illuminate\Http\Request;
 
 class ChatController extends Controller
 {
-    public function fetchMessages()
+    public function fetchMessages(Request $request)
     {
-        return Message::latest()->take(20)->get()->reverse()->values();
+        $query = Message::query();
+        
+        // If session_id is provided, filter messages for that visitor
+        if ($request->has('session_id')) {
+            $query->where('session_id', $request->session_id);
+        } else {
+            // Otherwise, get the 20 most recent messages
+            $query->latest()->take(20);
+        }
+        
+        return $query->get()->reverse()->values();
     }
 
     public function getActiveVisitors()

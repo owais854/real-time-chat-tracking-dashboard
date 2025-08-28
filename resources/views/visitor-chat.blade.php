@@ -17,6 +17,8 @@
             height: calc(100% - 60px);
         }
     </style>
+
+
 </head>
 <body class="bg-gray-100">
 <div class="container mx-auto px-4 py-8">
@@ -47,22 +49,22 @@
         </div>
     </div>
 </div>
-
+{{--<script src="http://127.0.0.1:8000/js/embed.js"></script>--}}
 <script>
     // Function to append messages in chat (global scope)
     let displayedMessageIds = new Set(); // Track displayed messages to prevent duplicates
-    
+
     function addMessageToChat(message, fromAdmin, messageId = null) {
         // Prevent duplicate messages
         if (messageId && displayedMessageIds.has(messageId)) {
             console.log('Message already displayed, skipping:', messageId);
             return;
         }
-        
+
         if (messageId) {
             displayedMessageIds.add(messageId);
         }
-        
+
         const messagesContainer = document.getElementById('messages');
         const messageElement = document.createElement('div');
 
@@ -95,7 +97,7 @@
             .listen('ChatMessageSent', (e) => {
                 console.log('Visitor received message event:', e);
                 console.log('Message details - fromAdmin:', e.fromAdmin, 'message:', e.message, 'sessionId:', e.sessionId);
-                
+
                 // Only show admin messages (fromAdmin = true) to this visitor
                 if (e.fromAdmin) {
                     console.log('Adding admin message to chat:', e.message);
@@ -110,19 +112,19 @@
 
         // Send message
         let isSending = false; // Prevent multiple simultaneous sends
-        
+
         window.sendMessage = async function () {
             if (isSending) {
                 console.log('Message already being sent, please wait...');
                 return;
             }
-            
+
             const input = document.getElementById('message-input');
             const message = input.value.trim();
             if (!message) return;
 
             isSending = true;
-            
+
             try {
                 const response = await fetch('/messages', {
                     method: 'POST',
@@ -158,18 +160,38 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', () => {
+    // Get CSRF token
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+    
     // Join when page loads
-    axios.post('{{ route('visitor.join') }}')
-        .catch(() => {});
+    axios.post('{{ route('visitor.join') }}', {}, {
+        headers: {
+            'X-CSRF-TOKEN': csrfToken,
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    }).catch(error => {
+        console.error('Error joining chat:', error);
+    });
 
-    // Heartbeat ping every 25s
+    // Heartbeat ping every 20s (slightly less than 2 minutes to be safe)
     setInterval(() => {
-        axios.post('{{ route('visitor.ping') }}').catch(() => {});
-    }, 25000);
+        axios.post('{{ route('visitor.ping') }}', {}, {
+            headers: {
+                'X-CSRF-TOKEN': csrfToken,
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        }).then(response => {
+            console.log('Ping successful');
+        }).catch(error => {
+            console.error('Ping failed:', error);
+        });
+    }, 20000);
 
     // Best-effort leave on unload
     window.addEventListener('beforeunload', function () {
-        navigator.sendBeacon('{{ route('visitor.leave') }}');
+        const data = new FormData();
+        data.append('_token', csrfToken);
+        navigator.sendBeacon('{{ route('visitor.leave') }}', data);
     });
 });
 </script>

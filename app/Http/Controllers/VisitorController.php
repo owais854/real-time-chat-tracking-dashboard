@@ -7,6 +7,7 @@ use App\Events\VisitorLeft;
 use App\Models\Visitor;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Jenssegers\Agent\Agent;
 
 class VisitorController extends Controller
@@ -63,7 +64,7 @@ class VisitorController extends Controller
     // Admin: list active
     public function active()
     {
-        // Prune older than 2 minutes as a safeguard
+        // Prune older than 2 minute as a safeguard
         $this->pruneInternal();
         return Visitor::where('is_active', true)->orderByDesc('last_activity')->get();
     }
@@ -102,6 +103,7 @@ class VisitorController extends Controller
      */
     public function historyData(Request $request)
     {
+//        dd($request->all());
         $rows = \DB::table('messages')
             ->select('visitor_ip', \DB::raw('COUNT(*) as total_messages'), \DB::raw('MAX(created_at) as last_message_at'))
             ->whereNotNull('visitor_ip')
@@ -120,6 +122,7 @@ class VisitorController extends Controller
                 'session_id' => $v->session_id ?? null,
             ];
         });
+//        dd($result);
 
         return response()->json($result);
     }

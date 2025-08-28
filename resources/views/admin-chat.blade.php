@@ -36,9 +36,16 @@
     <div class="flex-1 flex flex-col">
         <!-- Chat Header -->
         <div id="chat-header" class="bg-white shadow-sm p-4 border-b flex items-center justify-between">
-            <div>
-                <h2 class="text-lg font-semibold">Visitor Chat</h2>
-                <p class="text-sm text-gray-500">Active now</p>
+            <div class="flex items-center space-x-4">
+                <a href="{{ route('dashboard') }}" class="text-gray-600 hover:text-gray-800 transition-colors duration-200" title="Back to Dashboard">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                    </svg>
+                </a>
+                <div>
+                    <h2 class="text-lg font-semibold">Visitor Chat</h2>
+                    <p class="text-sm text-gray-500">Active now</p>
+                </div>
             </div>
 {{--            <div class="flex space-x-2">--}}
 {{--                <button onclick="loadActiveVisitors()" class="p-2 rounded-full hover:bg-gray-100" title="Refresh visitors">--}}
@@ -97,7 +104,18 @@
 
     document.addEventListener('DOMContentLoaded', () => {
         console.log('Admin: Connected to WebSocket: ', window.Echo);
-        loadActiveVisitors();
+        
+        // Check for visitor ID in URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const visitorId = urlParams.get('visitor');
+        
+        if (visitorId) {
+            // If visitor ID is in URL, select that visitor and load their messages
+            selectVisitor(visitorId);
+        } else {
+            // Otherwise load the active visitors list
+            loadActiveVisitors();
+        }
 
         // Listen for admin messages
         Echo.private('chat.admin')
@@ -119,7 +137,7 @@
                     // If sessionId is missing, try to find the visitor from the database
                     let targetVisitorId = e.sessionId;
                     if (!targetVisitorId) {
-                        console.log('⚠️ sessionId is missing, will try to find visitor from database');
+                        console.log('sessionId is missing, will try to find visitor from database');
                         // For now, assume it's from the currently selected visitor
                         targetVisitorId = selectedVisitorId;
                     }
@@ -128,11 +146,28 @@
                         console.log('Target visitor ID:', targetVisitorId);
 
                         // Store the message for this visitor
-                        if (!visitorMessages.has(targetVisitorId)) {
-                            visitorMessages.set(targetVisitorId, []);
+                        async function loadVisitorMessages(visitorId) {
+                            try {
+                                const response = await fetch(`/messages?session_id=${visitorId}`);
+                                const messages = await response.json();
+                                
+                                // Store messages for this visitor
+                                visitorMessages.set(visitorId, messages);
+                                currentChatMessages = messages;
+                                
+                                // Display messages
+                                displayMessages(messages);
+                                
+                                // Scroll to bottom of messages
+                                const messagesContainer = document.getElementById('messages');
+                                if (messagesContainer) {
+                                    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                                }
+                            } catch (error) {
+                                console.error('Error loading messages:', error);
+                            }
                         }
 
-                        const visitorMsgList = visitorMessages.get(targetVisitorId);
                         const newMessage = {
                             id: e.messageId,
                             message: e.message,
@@ -142,15 +177,20 @@
                         };
 
                         // Add message to visitor's message list
+                        if (!visitorMessages.has(targetVisitorId)) {
+                            visitorMessages.set(targetVisitorId, []);
+                        }
+
+                        const visitorMsgList = visitorMessages.get(targetVisitorId);
                         visitorMsgList.push(newMessage);
-                        console.log(`📝 Message stored for visitor ${targetVisitorId}. Total messages: ${visitorMsgList.length}`);
+                        console.log(`Message stored for visitor ${targetVisitorId}. Total messages: ${visitorMsgList.length}`);
 
                         // Only display the message if this visitor's chat is currently selected
                         if (selectedVisitorId === targetVisitorId) {
-                            console.log('✅ Visitor chat is selected! Displaying message immediately');
+                            console.log('Visitor chat is selected! Displaying message immediately');
                             displayMessageInCurrentChat(newMessage);
                         } else {
-                            console.log('📋 Visitor chat not selected. Message stored but not displayed');
+                            console.log('Visitor chat not selected. Message stored but not displayed');
                             // Mark as unread for other visitors
                             const currentUnread = unreadMessages.get(targetVisitorId) || 0;
                             unreadMessages.set(targetVisitorId, currentUnread + 1);
@@ -164,13 +204,13 @@
                             selectVisitor(targetVisitorId);
                         }
                     } else {
-                        console.log('❌ Cannot determine target visitor. sessionId:', e.sessionId, 'selectedVisitorId:', selectedVisitorId);
+                        console.log('Cannot determine target visitor. sessionId:', e.sessionId, 'selectedVisitorId:', selectedVisitorId);
                     }
 
                     // Always refresh visitor list to show new activity
                     loadActiveVisitors();
                 } else {
-                    console.log('❌ Message not processed. fromAdmin:', e.fromAdmin, 'messageId:', e.messageId);
+                    console.log('Message not processed. fromAdmin:', e.fromAdmin, 'messageId:', e.messageId);
                 }
             })
             .error((error) => {
@@ -247,39 +287,74 @@
         }
     }
 
-    function selectVisitor(visitorId) {
+    async function loadVisitorMessages(visitorId) {
+        console.log('Loading messages for visitor:', visitorId);
+        try {
+            // Clear current messages
+            const messagesContainer = document.getElementById('messages');
+            messagesContainer.innerHTML = '';
+            
+            // Fetch messages for this visitor
+            const response = await fetch(`/messages?session_id=${visitorId}`);
+            const messages = await response.json();
+            
+            console.log('Fetched messages:', messages);
+            
+            // Display messages
+            if (messages.length === 0) {
+                messagesContainer.innerHTML = '<div class="text-center text-gray-500 text-sm mt-4">No messages yet. Start the conversation!</div>';
+            } else {
+                messages.forEach(message => {
+                    addMessageToChat(
+                        message.message, 
+                        message.from_admin, 
+                        message.id, 
+                        message.created_at
+                    );
+                });
+                
+                // Scroll to bottom
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            }
+            
+            return messages;
+        } catch (error) {
+            console.error('Error loading messages:', error);
+            return [];
+        }
+    }
+    
+    async function selectVisitor(visitorId) {
         console.log('Selecting visitor:', visitorId);
-
-        // Clear current chat before switching
-        if (selectedVisitorId && selectedVisitorId !== visitorId) {
-            console.log('Switching visitors, clearing current chat');
-            clearCurrentChat();
-        }
-
         selectedVisitorId = visitorId;
-
+        
+        // Update URL with visitor ID
+        const newUrl = new URL(window.location);
+        newUrl.searchParams.set('visitor', visitorId);
+        window.history.pushState({}, '', newUrl);
+        
         // Update UI to show selected visitor
-        document.querySelectorAll('#active-chats > div').forEach(el => {
+        document.querySelectorAll('.visitor-item').forEach(el => {
             el.classList.remove('bg-gray-700');
+            if (el.dataset.visitorId === visitorId) {
+                el.classList.add('bg-gray-700');
+                
+                // Update chat header with visitor info
+                document.getElementById('chat-header').innerHTML = `
+                    <div>
+                        <h2 class="text-lg font-semibold">Chat with Visitor</h2>
+                        <p class="text-sm text-gray-500">${el.dataset.visitorIp || 'Unknown IP'}</p>
+                    </div>
+                `;
+            }
         });
-
-        // Find and highlight the selected visitor element
-        const selectedElement = document.querySelector(`[data-visitor-id="${visitorId}"]`);
-        if (selectedElement) {
-            selectedElement.classList.add('bg-gray-700');
-        }
-
-        // Update chat header
-        const headerElement = document.querySelector('#chat-header h2');
-        if (headerElement) {
-            headerElement.textContent = `Visitor: ${visitorId.substring(0, 8)}...`;
-        }
-
+        
         // Load messages for this visitor
-        loadMessagesForVisitor(visitorId);
-        clearUnreadMessages(visitorId); // Clear unread messages when a visitor is selected
-
-        console.log('Visitor selected successfully:', visitorId);
+        await loadVisitorMessages(visitorId);
+        
+        // Clear unread count for this visitor
+        unreadMessages.set(visitorId, 0);
+        updateUnreadIndicator(visitorId);
     }
 
     function clearCurrentChat() {
@@ -317,12 +392,12 @@
                     displayedMessageIds.add(message.id);
                 }
 
-                console.log('✅ Message displayed in current chat successfully');
+                console.log('Message displayed in current chat successfully');
             } else {
-                console.error('❌ Messages container not found');
+                console.error('Messages container not found');
             }
         } else {
-            console.log('❌ Message does not belong to currently selected visitor');
+            console.log('Message does not belong to currently selected visitor');
         }
     }
 
@@ -347,7 +422,7 @@
                         displayMessageInCurrentChat(msg);
                         currentChatMessages.push(msg);
                     });
-                    console.log('✅ Stored messages loaded successfully');
+                    console.log('Stored messages loaded successfully');
                     return;
                 }
             }
@@ -489,7 +564,7 @@
                         visitor_ip: selectedVisitorId
                     };
                     visitorMsgList.push(adminMessage);
-                    console.log('📝 Admin message stored for visitor:', selectedVisitorId);
+                    console.log('Admin message stored for visitor:', selectedVisitorId);
                 }
 
                 addMessageToChat(message, true);
@@ -571,15 +646,15 @@
 
                 messagesContainer.appendChild(messageElement);
                 messagesContainer.scrollTop = messagesContainer.scrollHeight;
-                console.log('✅ Test real-time message added successfully');
+                console.log('Test real-time message added successfully');
 
                 // Add to displayed set
                 displayedMessageIds.add(testEvent.messageId);
             } else {
-                console.error('❌ Messages container not found for test');
+                console.error('Messages container not found for test');
             }
         } else {
-            console.log('❌ No visitor selected for test');
+            console.log('No visitor selected for test');
         }
     }
 

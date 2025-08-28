@@ -12,8 +12,8 @@
                             <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd" />
                         </svg>
                     </div>
-                    <input id="search" type="text" 
-                           class="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm" 
+                    <input id="search" type="text"
+                           class="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                            placeholder="Search by IP, URL, or message..." />
                 </div>
             </div>
@@ -179,22 +179,22 @@
                 const date = new Date(dateString);
                 const now = new Date();
                 const seconds = Math.floor((now - date) / 1000);
-                
+
                 let interval = Math.floor(seconds / 31536000);
                 if (interval >= 1) return `${interval} year${interval === 1 ? '' : 's'} ago`;
-                
+
                 interval = Math.floor(seconds / 2592000);
                 if (interval >= 1) return `${interval} month${interval === 1 ? '' : 's'} ago`;
-                
+
                 interval = Math.floor(seconds / 86400);
                 if (interval >= 1) return `${interval} day${interval === 1 ? '' : 's'} ago`;
-                
+
                 interval = Math.floor(seconds / 3600);
                 if (interval >= 1) return `${interval} hour${interval === 1 ? '' : 's'} ago`;
-                
+
                 interval = Math.floor(seconds / 60);
                 if (interval >= 1) return `${interval} minute${interval === 1 ? '' : 's'} ago`;
-                
+
                 return 'Just now';
             }
 
@@ -230,11 +230,11 @@
             // Update statistics cards
             function updateStats(data) {
                 document.getElementById('totalChats').textContent = data.length;
-                
+
                 // Count unique visitors
                 const uniqueVisitors = new Set(data.map(chat => chat.visitor_ip));
                 document.getElementById('uniqueVisitors').textContent = uniqueVisitors.size;
-                
+
                 // Count active chats (last 10 minutes)
                 const activeChats = data.filter(chat => {
                     const lastActivity = new Date(chat.last_activity || 0);
@@ -250,33 +250,33 @@
                 const searchTerm = (search.value || '').toLowerCase().trim();
                 const timeFilterValue = timeFilter.value;
                 const now = new Date();
-                
+
                 return allData.filter(chat => {
                     // Apply time filter
                     if (chat.last_activity) {
                         const lastActivity = new Date(chat.last_activity);
-                        
-                        if (timeFilterValue === 'today' && 
+
+                        if (timeFilterValue === 'today' &&
                             lastActivity.toDateString() !== now.toDateString()) {
                             return false;
                         }
-                        
+
                         if (timeFilterValue === 'week') {
                             const oneWeekAgo = new Date();
                             oneWeekAgo.setDate(now.getDate() - 7);
                             if (lastActivity < oneWeekAgo) return false;
                         }
-                        
+
                         if (timeFilterValue === 'month') {
                             const oneMonthAgo = new Date();
                             oneMonthAgo.setMonth(now.getMonth() - 1);
                             if (lastActivity < oneMonthAgo) return false;
                         }
                     }
-                    
+
                     // Apply search filter
                     if (!searchTerm) return true;
-                    
+
                     return (
                         (chat.visitor_ip && chat.visitor_ip.toLowerCase().includes(searchTerm)) ||
                         (chat.current_url && chat.current_url.toLowerCase().includes(searchTerm)) ||
@@ -296,7 +296,7 @@
             function renderTable(page, data) {
                 const startIndex = (page - 1) * itemsPerPage;
                 const paginatedItems = data.slice(startIndex, startIndex + itemsPerPage);
-                
+
                 if (paginatedItems.length === 0) {
                     body.innerHTML = `
                         <tr>
@@ -318,7 +318,7 @@
                     const lastActive = row.last_activity ? formatRelativeTime(row.last_activity) : 'Never';
                     const lastMessage = row.last_message_at ? formatRelativeTime(row.last_message_at) : 'No messages';
                     const isActive = row.last_activity ? (new Date() - new Date(row.last_activity) < 10 * 60 * 1000) : false;
-                    
+                    console.log(row,'Row');
                     out += `
                     <tr class="hover:bg-gray-50">
                         <td class="px-6 py-4 whitespace-nowrap">
@@ -354,8 +354,9 @@
                         </td>
                     </tr>`;
                 });
-                
+
                 body.innerHTML = out;
+
             }
 
             // Render pagination
@@ -363,40 +364,40 @@
                 const totalPages = Math.ceil(data.length / itemsPerPage);
                 const pagination = document.getElementById('pagination');
                 const paginationInfo = document.getElementById('paginationInfo');
-                
+
                 if (data.length === 0) {
                     paginationInfo.innerHTML = 'No results found';
                     pagination.innerHTML = '';
                     return;
                 }
-                
+
                 const startItem = ((currentPage - 1) * itemsPerPage) + 1;
                 const endItem = Math.min(currentPage * itemsPerPage, data.length);
-                
+
                 paginationInfo.innerHTML = `Showing <span class="font-medium">${startItem}</span> to <span class="font-medium">${endItem}</span> of <span class="font-medium">${data.length}</span> results`;
-                
+
                 let buttons = '';
-                
+
                 // Previous button
                 buttons += `
-                    <button ${currentPage === 1 ? 'disabled' : ''} 
-                            onclick="changePage(${currentPage - 1})" 
+                    <button ${currentPage === 1 ? 'disabled' : ''}
+                            onclick="changePage(${currentPage - 1})"
                             class="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium ${currentPage === 1 ? 'text-gray-300' : 'text-gray-500 hover:bg-gray-50'}">
                         <span class="sr-only">Previous</span>
                         <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
                             <path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd" />
                         </svg>
                     </button>`;
-                
+
                 // Page numbers
                 const maxVisiblePages = 5;
                 let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
                 let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
-                
+
                 if (endPage - startPage + 1 < maxVisiblePages) {
                     startPage = Math.max(1, endPage - maxVisiblePages + 1);
                 }
-                
+
                 if (startPage > 1) {
                     buttons += `
                         <button onclick="changePage(1)" class="bg-white border-gray-300 text-gray-500 hover:bg-gray-50 relative inline-flex items-center px-4 py-2 border text-sm font-medium">
@@ -409,15 +410,15 @@
                             </span>`;
                     }
                 }
-                
+
                 for (let i = startPage; i <= endPage; i++) {
                     buttons += `
-                        <button onclick="changePage(${i})" 
+                        <button onclick="changePage(${i})"
                                 class="${i === currentPage ? 'z-10 bg-indigo-50 border-indigo-500 text-indigo-600' : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'} relative inline-flex items-center px-4 py-2 border text-sm font-medium">
                             ${i}
                         </button>`;
                 }
-                
+
                 if (endPage < totalPages) {
                     if (endPage < totalPages - 1) {
                         buttons += `
@@ -430,18 +431,18 @@
                             ${totalPages}
                         </button>`;
                 }
-                
+
                 // Next button
                 buttons += `
-                    <button ${currentPage === totalPages ? 'disabled' : ''} 
-                            onclick="changePage(${currentPage + 1})" 
+                    <button ${currentPage === totalPages ? 'disabled' : ''}
+                            onclick="changePage(${currentPage + 1})"
                             class="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium ${currentPage === totalPages ? 'text-gray-300' : 'text-gray-500 hover:bg-gray-50'}">
                         <span class="sr-only">Next</span>
                         <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
                             <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd" />
                         </svg>
                     </button>`;
-                
+
                 pagination.innerHTML = buttons;
             }
 
@@ -466,6 +467,7 @@
 
             // Global function to open chat
             window.openChat = function(id) {
+
                 window.location.href = '/admin/chat?visitor=' + id;
             };
 
