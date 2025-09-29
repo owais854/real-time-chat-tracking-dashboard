@@ -5,6 +5,7 @@
             <div class="flex">
                 <!-- Logo -->
                 <div class="shrink-0 flex items-center">
+
                     <a href="{{ route('dashboard') }}">
                         <x-application-logo class="block h-9 w-auto fill-current text-gray-800" />
                     </a>
@@ -12,7 +13,10 @@
 
                 <!-- Navigation Links -->
                 <div class="hidden space-x-8 sm:-my-px sm:ms-10 sm:flex">
-                    <x-nav-link :href="route('dashboard')" :active="request()->routeIs('dashboard')">
+                    <x-nav-link
+                        :href="auth()->user()->role === 'admin' ? route('dashboard') : route('agent.dashboard')"
+                        :active="request()->routeIs(auth()->user()->role === 'admin' ? 'dashboard' : 'agent.dashboard')"
+                    >
                         <div class="flex items-center">
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor">
                                 <path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z" />
@@ -20,6 +24,7 @@
                             {{ __('Dashboard') }}
                         </div>
                     </x-nav-link>
+
                     <x-nav-link :href="route('admin.history')" :active="request()->routeIs('admin.history')">
                         <div class="flex items-center">
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor">
@@ -28,6 +33,16 @@
                             {{ __('Chat History') }}
                         </div>
                     </x-nav-link>
+                    @if(auth()->check() && auth()->user()->role === 'admin')
+                    <x-nav-link :href="route('admin.agents.index')" :active="request()->routeIs('admin.agents.*')">
+                        <div class="flex items-center">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor">
+                                <path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z" />
+                            </svg>
+                            {{ __('Agent Management') }}
+                        </div>
+                    </x-nav-link>
+                    @endif
                 </div>
             </div>
 
@@ -139,6 +154,87 @@
         </div>
     </div>
 </nav>
+
+<script>
+    // Real-time visitor count updates for navigation
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log('Navigation: Initializing visitor count tracking...');
+
+        // Wait for Echo to be available
+        function waitForEcho() {
+            if (window.Echo) {
+                console.log('Navigation: Echo is available, joining public channel...');
+
+                // Listen to visitor online/offline events
+                window.Echo.channel('visitors.public')
+                    .listen('visitor.online', (e) => {
+                        console.log('Navigation: Visitor came online event received:', e);
+                        if (e.visitor && e.visitor.ip_address) {
+                            console.log('Navigation: Processing online event for IP:', e.visitor.ip_address);
+                            updateVisitorCountBadge();
+                        }
+                    })
+                    .listen('visitor.offline', (e) => {
+                        console.log('Navigation: Visitor went offline event received:', e);
+                        if (e.visitor && e.visitor.ip_address) {
+                            console.log('Navigation: Processing offline event for IP:', e.visitor.ip_address);
+                            updateVisitorCountBadge();
+                        }
+                    })
+                    .error((error) => {
+                        console.error('Navigation: Public channel error:', error);
+                    });
+            } else {
+                console.log('Navigation: Echo not ready yet, retrying in 500ms...');
+                setTimeout(waitForEcho, 500);
+            }
+        }
+
+        // Start waiting for Echo
+        waitForEcho();
+
+        // Initial load of visitor count
+        updateVisitorCountBadge();
+
+        // Auto refresh visitor count every 10 seconds
+        setInterval(function() {
+            console.log('Navigation: Auto-refreshing visitor count...');
+            updateVisitorCountBadge();
+        }, 10000);
+
+        // Function to update visitor count badge
+        function updateVisitorCountBadge() {
+            console.log('Navigation: Updating visitor count badge...');
+            fetch('/admin/visitors/active')
+                .then(response => response.json())
+                .then(visitors => {
+                    console.log('Navigation: Fetched active visitors:', visitors);
+
+                    // Remove duplicates by IP address to ensure accurate count
+                    const uniqueVisitors = [];
+                    const seenIPs = new Set();
+
+                    visitors.forEach(visitor => {
+                        const ip = visitor.ip_address;
+                        if (ip && !seenIPs.has(ip)) {
+                            seenIPs.add(ip);
+                            uniqueVisitors.push(visitor);
+                        }
+                    });
+
+                    console.log('Navigation: Unique active visitors:', uniqueVisitors.length);
+                    const badge = document.getElementById('visitorCountBadge');
+                    if (badge) {
+                        badge.textContent = uniqueVisitors.length;
+                        console.log('Navigation: Updated visitor count badge to:', uniqueVisitors.length);
+                    } else {
+                        console.log('Navigation: Visitor count badge not found');
+                    }
+                })
+                .catch(error => console.error('Navigation: Error fetching visitors:', error));
+        }
+    });
+</script>
 <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
 
 <script>
@@ -146,22 +242,71 @@
         const badge = document.getElementById('visitorCountBadge');
         let count = 0;
 
-        // Initial fetch count
-        axios.get('{{ route('admin.visitors.active') }}')
-            .then(({data})=>{
-                badge.textContent = data.length;
-            });
+        // Function to update visitor count
+        function updateVisitorCount() {
+            console.log('Navigation: Updating visitor count...');
+            fetch('/admin/visitors/all')
+                .then(response => response.json())
+                .then(visitors => {
+                    console.log('Navigation: Fetched visitors:', visitors);
+                    // Filter to only show truly online visitors (those with recent activity)
+                    const onlineVisitors = visitors.filter(visitor => {
+                        // Check if visitor is active (from database is_active field or recent activity)
+                        const isActive = visitor.is_active === true ||
+                            (visitor.last_activity && new Date(visitor.last_activity) > new Date(Date.now() - 60000)); // 1 minute threshold
+                        return isActive;
+                    });
 
-        // Realtime updates
-        if(window.Echo){
-            window.Echo.channel('visitors')
-                .listen('VisitorJoined', (e)=>{
-                    count++;
-                    badge.textContent = parseInt(badge.textContent)+1;
+                    console.log('Navigation: Online visitors:', onlineVisitors.length);
+                    badge.textContent = onlineVisitors.length;
                 })
-                .listen('VisitorLeft', (e)=>{
-                    badge.textContent = Math.max(0, parseInt(badge.textContent)-1);
-                });
+                .catch(error => console.error('Navigation: Error fetching visitors:', error));
         }
+
+        // Initial fetch count
+        updateVisitorCount();
+
+        // Wait for Echo to be available
+        function waitForEcho() {
+            if (window.Echo) {
+                console.log('Navigation: Echo is available, joining public channel...');
+
+                // Listen to visitor online/offline events
+                window.Echo.channel('visitors.public')
+                    .listen('visitor.online', (e) => {
+                        console.log('Navigation: Visitor came online event received:', e);
+                        if (e.visitor && e.visitor.ip_address) {
+                            console.log('Navigation: Processing online event for IP:', e.visitor.ip_address);
+                            updateVisitorCount();
+                        } else {
+                            console.log('Navigation: No visitor data or IP address in online event');
+                        }
+                    })
+                    .listen('visitor.offline', (e) => {
+                        console.log('Navigation: Visitor went offline event received:', e);
+                        if (e.visitor && e.visitor.ip_address) {
+                            console.log('Navigation: Processing offline event for IP:', e.visitor.ip_address);
+                            updateVisitorCount();
+                        } else {
+                            console.log('Navigation: No visitor data or IP address in offline event');
+                        }
+                    })
+                    .error((error) => {
+                        console.error('Navigation: Public channel error:', error);
+                    });
+            } else {
+                console.log('Navigation: Echo not ready yet, retrying in 500ms...');
+                setTimeout(waitForEcho, 500);
+            }
+        }
+
+        // Start waiting for Echo
+        waitForEcho();
+
+        // Auto refresh visitor count every 10 seconds to ensure accuracy
+        setInterval(function() {
+            console.log('Navigation: Auto-refreshing visitor count...');
+            updateVisitorCount();
+        }, 10000);
     })();
 </script>

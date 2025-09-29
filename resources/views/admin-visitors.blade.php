@@ -2,9 +2,14 @@
     <x-slot name="header">
         <div class="flex justify-between items-center">
             <h2 class="text-2xl font-bold text-gray-800">Active Visitors</h2>
-            <div class="flex items-center bg-blue-100 text-blue-800 text-sm font-semibold px-3 py-1 rounded-full">
-                <span id="visitorCountBadge" class="inline-flex items-center justify-center h-6 w-6 bg-blue-600 text-white text-xs font-bold rounded-full mr-2">0</span>
-                Active Visitors
+            <div class="flex items-center space-x-4">
+{{--                <button onclick="cleanupVisitors()" class="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm">--}}
+{{--                    Cleanup Old Visitors--}}
+{{--                </button>--}}
+                <div class="flex items-center bg-blue-100 text-blue-800 text-sm font-semibold px-3 py-1 rounded-full">
+                    <span id="visitorCountBadge" class="inline-flex items-center justify-center h-6 w-6 bg-blue-600 text-white text-xs font-bold rounded-full mr-2">0</span>
+                    Active Visitors
+                </div>
             </div>
         </div>
     </x-slot>
@@ -84,7 +89,7 @@
                                     </div>
                                     <div class="ml-4">
                                         <div class="text-sm font-medium text-gray-900">${v.ip_address || 'N/A'}</div>
-                                        <div class="text-xs text-gray-500">${v.country || 'Unknown'}</div>
+                                        <div class="text-xs text-gray-500">${v.country || 'Unknown'} ${v.tabs_count > 1 ? `(${v.tabs_count} tabs)` : ''}</div>
                                     </div>
                                 </div>
                             </td>
@@ -126,9 +131,12 @@
                             <td class="px-6 py-4 whitespace-nowrap">
                                 <div class="text-sm text-gray-900">${v.last_activity ? new Date(v.last_activity).toLocaleString() : 'N/A'}</div>
                                 <div class="text-xs text-gray-500">${v.last_activity ? timeAgo(new Date(v.last_activity)) : ''}</div>
+                                <div class="text-xs ${v.is_active ? 'text-green-600' : 'text-gray-500'}">
+                                    ${v.is_active ? '● Online' : '○ Offline'}
+                                </div>
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                <button onclick="startChat('${v.session_id}')" class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200">
+                                <button onclick="startChat('${v.ip_address || v.id}')" class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200">
                                     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                                     </svg>
@@ -165,29 +173,130 @@
             }
             fetchVisitors();
 
-            // Realtime updates
-            if (window.Echo) {
-                window.Echo.channel('visitors')
-                    .listen('VisitorJoined', (e) => {
-                        visitors[e.visitor.id] = e.visitor;
-                        render();
-                    })
-                    .listen('VisitorLeft', (e) => {
-                        delete visitors[e.visitorId];
-                        render();
-                    });
+            // Realtime updates using presence channel
+            console.log('Admin-Visitors: Initializing real-time tracking...');
+
+            // Wait for Echo to be available
+            function waitForEcho() {
+                if (window.Echo) {
+                    console.log('Admin-Visitors: Echo is available, joining presence channel...');
+
+                    // Listen to visitor online/offline events
+                    window.Echo.channel('visitors.public')
+                        .listen('visitor.online', (e) => {
+                            console.log('Admin-Visitors: Visitor came online:', e);
+                            if (e.visitor && e.visitor.ip_address) {
+                                console.log('Admin-Visitors: Processing online event for IP:', e.visitor.ip_address);
+                                showNotification(`Visitor ${e.visitor.ip_address} is now online`);
+                                // Update visitor data
+                                visitors[e.visitor.id || e.visitor.ip_address] = e.visitor;
+                                // Update visitor status in real-time
+                                updateVisitorStatusInVisitorsPage(e.visitor.ip_address, true);
+                                render();
+                            }
+                        })
+                        .listen('visitor.offline', (e) => {
+                            console.log('Admin-Visitors: Visitor went offline:', e);
+                            if (e.visitor && e.visitor.ip_address) {
+                                console.log('Admin-Visitors: Processing offline event for IP:', e.visitor.ip_address);
+                                showNotification(`Visitor ${e.visitor.ip_address} went offline`);
+                                // Update visitor status in real-time
+                                updateVisitorStatusInVisitorsPage(e.visitor.ip_address, false);
+                                // Remove visitor from list after a delay
+                                setTimeout(() => {
+                                    if (e.visitor.id) {
+                                        delete visitors[e.visitor.id];
+                                    }
+                                    render();
+                                }, 2000);
+                            }
+                        })
+                        .error((error) => {
+                            console.error('Admin-Visitors: Public channel error:', error);
+                        });
+                } else {
+                    console.log('Admin-Visitors: Echo not ready yet, retrying in 500ms...');
+                    setTimeout(waitForEcho, 500);
+                }
             }
 
-            // Auto-prune every 60s
+            // Start waiting for Echo
+            waitForEcho();
+
+            // Auto-prune every 10s for more responsive updates
             setInterval(() => {
                 axios.post('{{ route('admin.visitors.prune') }}').then(() => {
                     fetchVisitors();
                 });
-            }, 60000);
+            }, 10000);
         })();
         function startChat(visitorId) {
             // Implement chat initiation logic
             window.location.href = `/admin/chat?visitor=${visitorId}`;
         }
+
+        // Function to update visitor status in visitors page
+        function updateVisitorStatusInVisitorsPage(visitorIp, isOnline = true) {
+            console.log('Admin-Visitors: Updating visitor status:', visitorIp, 'isOnline:', isOnline);
+
+            // Update any visitor status indicators if they exist
+            const visitorElements = document.querySelectorAll('[data-visitor-ip="' + visitorIp + '"]');
+            visitorElements.forEach(element => {
+                const statusDot = element.querySelector('.w-3.h-3, .status-dot');
+                const statusText = element.querySelector('.status-text');
+
+                if (statusDot) {
+                    statusDot.className = `w-3 h-3 ${isOnline ? 'bg-green-500' : 'bg-gray-400'} rounded-full mr-2 status-dot`;
+                }
+
+                if (statusText) {
+                    statusText.className = `text-xs ${isOnline ? 'text-green-600' : 'text-gray-500'} status-text`;
+                    statusText.textContent = isOnline ? 'Online' : 'Offline';
+                }
+            });
+
+            console.log('Admin-Visitors: Visitor status updated successfully');
+        }
+
+        // Function to show notifications
+        function showNotification(message) {
+            // Create notification element
+            const notification = document.createElement('div');
+            notification.className = 'fixed top-4 right-4 bg-blue-600 text-white px-6 py-3 rounded-lg shadow-lg z-50 transform transition-all duration-300 translate-x-full';
+            notification.textContent = message;
+
+            // Add to body
+            document.body.appendChild(notification);
+
+            // Animate in
+            setTimeout(() => {
+                notification.classList.remove('translate-x-full');
+            }, 100);
+
+            // Remove after 3 seconds
+            setTimeout(() => {
+                notification.classList.add('translate-x-full');
+                setTimeout(() => {
+                    if (notification.parentNode) {
+                        notification.parentNode.removeChild(notification);
+                    }
+                }, 300);
+            }, 3000);
+        }
+
+        function cleanupVisitors() {
+            if (confirm('Are you sure you want to cleanup all old visitors? This will mark all inactive visitors as offline.')) {
+                axios.post('{{ route('admin.visitors.cleanup') }}')
+                    .then(response => {
+                        alert(`Cleaned up ${response.data.cleaned} old visitors`);
+                        fetchVisitors(); // Refresh the list
+                    })
+                    .catch(error => {
+                        console.error('Cleanup failed:', error);
+                        alert('Cleanup failed. Please try again.');
+                    });
+            }
+        }
     </script>
 </x-app-layout>
+

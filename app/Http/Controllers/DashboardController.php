@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Message;
+use App\Models\User;
 use App\Models\Visitor;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -24,12 +25,16 @@ class DashboardController extends Controller
         $recentMessages = Message::with('visitor')
             ->latest()
             ->paginate(10);
+            
+        // Get total agents count
+        $totalAgents = User::where('role', 'agent')->count();
 
         return view('dashboard', [
             'totalMessages' => $totalMessages,
             'activeVisitors' => $activeVisitors,
             'todayChats' => $todayChats,
-            'recentMessages' => $recentMessages
+            'recentMessages' => $recentMessages,
+            'totalAgents' => $totalAgents
         ]);
     }
 }

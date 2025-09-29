@@ -14,6 +14,8 @@ class Message extends Model
     protected $fillable = [
         'message',
         'from_admin',
+        'files',
+        'visitor_ip',
     ];
 
     /**
@@ -23,6 +25,7 @@ class Message extends Model
      */
     protected $casts = [
         'from_admin' => 'boolean',
+        'files' => 'array',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];

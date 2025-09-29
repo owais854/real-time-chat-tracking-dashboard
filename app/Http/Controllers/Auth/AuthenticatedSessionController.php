@@ -28,20 +28,45 @@ class AuthenticatedSessionController extends Controller
 
         $request->session()->regenerate();
 
-        return redirect()->intended(route('dashboard', absolute: false));
+        $user = Auth::user();
+
+        // Sirf agent ka status update hoga
+        if ($user->role === 'agent') {
+            $user->status = 'online';
+            $user->save();
+            return redirect()->route('agent.dashboard'); // agent dashboard
+        }
+
+        if ($user->role === 'admin') {
+            return redirect()->route('dashboard'); // admin dashboard
+        }
+
+        // fallback agar role match na ho
+        return redirect()->route('dashboard');
     }
+
 
     /**
      * Destroy an authenticated session.
      */
     public function destroy(Request $request): RedirectResponse
     {
+        // Get the authenticated user before logging out
+        $user = Auth::user();
+
+        // Logout the user
         Auth::guard('web')->logout();
 
-        $request->session()->invalidate();
+        // Sirf agent ka status update hoga
+        if ($user && $user->role === 'agent') {
+            $user->status = 'offline';
+            $user->save();
+        }
 
+        $request->session()->invalidate();
         $request->session()->regenerateToken();
 
         return redirect('/');
     }
+
 }

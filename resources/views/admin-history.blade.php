@@ -5,7 +5,16 @@
                 <h2 class="text-2xl font-bold text-gray-900">Chat History</h2>
                 <p class="mt-1 text-sm text-gray-600">View and manage all visitor chat histories</p>
             </div>
-            <div class="mt-4 md:mt-0">
+            <div class="mt-4 md:mt-0 flex items-center space-x-4">
+{{--                <button onclick="testStatusUpdate('127.0.0.1', true)" class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm">--}}
+{{--                    Test Online--}}
+{{--                </button>--}}
+{{--                <button onclick="testStatusUpdate('127.0.0.1', false)" class="bg-gray-500 hover:bg-gray-600 text-white px-3 py-1 rounded text-sm">--}}
+{{--                    Test Offline--}}
+{{--                </button>--}}
+{{--                <button onclick="debugData()" class="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-sm">--}}
+{{--                    Debug Data--}}
+{{--                </button>--}}
                 <div class="relative">
                     <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                         <svg class="h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
@@ -115,9 +124,9 @@
                                 <span class="text-sm text-gray-500 mr-2">Filter:</span>
                                 <select id="timeFilter" class="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md">
                                     <option value="today">Today</option>
-                                    <option value="week" selected>This Week</option>
+                                    <option value="week">This Week</option>
                                     <option value="month">This Month</option>
-                                    <option value="all">All Time</option>
+                                    <option value="all" selected>All Time</option>
                                 </select>
                             </div>
                         </div>
@@ -164,6 +173,7 @@
         </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function () {
             const body = document.getElementById('historyBody');
@@ -210,14 +220,21 @@
                         </td>
                     </tr>`;
 
+                console.log('Admin-History: Fetching history data...');
                 axios.get('/admin/history/data')
                     .then(res => {
+                        console.log('Admin-History: Received data from server:', res.data);
                         allData = Array.isArray(res.data) ? res.data : [];
+                        console.log('Admin-History: Processed allData:', allData);
+                        console.log('Admin-History: Number of visitors:', allData.length);
+                        allData.forEach((visitor, index) => {
+                            console.log(`Admin-History: Visitor ${index + 1}:`, visitor.visitor_ip, 'last_activity:', visitor.last_activity, 'is_active:', visitor.is_active);
+                        });
                         updateStats(allData);
                         filterAndRender();
                     })
                     .catch(err => {
-                        console.error('Error fetching history:', err);
+                        console.error('Admin-History: Error fetching history:', err);
                         body.innerHTML = `
                             <tr>
                                 <td colspan="5" class="px-6 py-4 text-center text-red-500">
@@ -227,22 +244,38 @@
                     });
             }
 
-            // Update statistics cards
+            // Enhanced statistics update function
             function updateStats(data) {
+                console.log('Admin-History: Updating statistics with data:', data);
+
+                // Update total chats count
                 document.getElementById('totalChats').textContent = data.length;
 
                 // Count unique visitors
                 const uniqueVisitors = new Set(data.map(chat => chat.visitor_ip));
                 document.getElementById('uniqueVisitors').textContent = uniqueVisitors.size;
 
-                // Count active chats (last 10 minutes)
+                // Count active chats using the is_active field from API
                 const activeChats = data.filter(chat => {
-                    const lastActivity = new Date(chat.last_activity || 0);
-                    const tenMinutesAgo = new Date();
-                    tenMinutesAgo.setMinutes(tenMinutesAgo.getMinutes() - 10);
-                    return lastActivity > tenMinutesAgo;
+                    // Check if visitor is active based on multiple criteria
+                    const isActive = chat.is_active === true;
+                    const hasRecentActivity = chat.last_activity &&
+                        new Date(chat.last_activity) > new Date(Date.now() - 60000); // Last minute
+
+                    return isActive || hasRecentActivity;
                 }).length;
+
+                console.log('Admin-History: Active chats count:', activeChats, 'from data:', data);
                 document.getElementById('activeChats').textContent = activeChats;
+
+                // Add visual feedback for active count changes
+                const activeChatsElement = document.getElementById('activeChats');
+                if (activeChatsElement) {
+                    activeChatsElement.style.color = '#059669'; // Green color for active
+                    setTimeout(() => {
+                        activeChatsElement.style.color = '';
+                    }, 1000);
+                }
             }
 
             // Filter data based on search and time filter
@@ -251,43 +284,67 @@
                 const timeFilterValue = timeFilter.value;
                 const now = new Date();
 
+                console.log('Admin-History: Filtering data with timeFilter:', timeFilterValue, 'total data:', allData.length);
+
                 return allData.filter(chat => {
+                    console.log('Admin-History: Processing visitor:', chat.visitor_ip, 'last_activity:', chat.last_activity);
+
                     // Apply time filter
                     if (chat.last_activity) {
                         const lastActivity = new Date(chat.last_activity);
 
-                        if (timeFilterValue === 'today' &&
-                            lastActivity.toDateString() !== now.toDateString()) {
-                            return false;
+                        if (timeFilterValue === 'today') {
+                            const isToday = lastActivity.toDateString() === now.toDateString();
+                            console.log('Admin-History: Today filter - isToday:', isToday);
+                            if (!isToday) return false;
                         }
 
                         if (timeFilterValue === 'week') {
                             const oneWeekAgo = new Date();
                             oneWeekAgo.setDate(now.getDate() - 7);
-                            if (lastActivity < oneWeekAgo) return false;
+                            const isWithinWeek = lastActivity >= oneWeekAgo;
+                            console.log('Admin-History: Week filter - oneWeekAgo:', oneWeekAgo, 'lastActivity:', lastActivity, 'isWithinWeek:', isWithinWeek);
+                            if (!isWithinWeek) return false;
                         }
 
                         if (timeFilterValue === 'month') {
                             const oneMonthAgo = new Date();
                             oneMonthAgo.setMonth(now.getMonth() - 1);
-                            if (lastActivity < oneMonthAgo) return false;
+                            const isWithinMonth = lastActivity >= oneMonthAgo;
+                            console.log('Admin-History: Month filter - oneMonthAgo:', oneMonthAgo, 'lastActivity:', lastActivity, 'isWithinMonth:', isWithinMonth);
+                            if (!isWithinMonth) return false;
                         }
+                    } else {
+                        // If no last_activity, include the visitor (they might be cached visitors)
+                        console.log('Admin-History: No last_activity for visitor:', chat.visitor_ip, '- including anyway');
                     }
 
                     // Apply search filter
-                    if (!searchTerm) return true;
+                    if (!searchTerm) {
+                        console.log('Admin-History: No search term - including visitor:', chat.visitor_ip);
+                        return true;
+                    }
 
-                    return (
+                    const matchesSearch = (
                         (chat.visitor_ip && chat.visitor_ip.toLowerCase().includes(searchTerm)) ||
                         (chat.current_url && chat.current_url.toLowerCase().includes(searchTerm)) ||
                         (chat.last_message && chat.last_message.toLowerCase().includes(searchTerm))
                     );
+
+                    console.log('Admin-History: Search filter - matchesSearch:', matchesSearch);
+                    return matchesSearch;
                 });
             }
 
             // Render the table with pagination
             function filterAndRender() {
+                console.log('Admin-History: Starting filterAndRender...');
                 filteredData = filterData();
+                console.log('Admin-History: Filtered data result:', filteredData);
+                console.log('Admin-History: Number of filtered visitors:', filteredData.length);
+                filteredData.forEach((visitor, index) => {
+                    console.log(`Admin-History: Filtered visitor ${index + 1}:`, visitor.visitor_ip, 'last_activity:', visitor.last_activity);
+                });
                 renderPagination(filteredData);
                 renderTable(currentPage, filteredData);
             }
@@ -317,8 +374,8 @@
                     const url = row.current_url ? new URL(row.current_url).pathname : '/';
                     const lastActive = row.last_activity ? formatRelativeTime(row.last_activity) : 'Never';
                     const lastMessage = row.last_message_at ? formatRelativeTime(row.last_message_at) : 'No messages';
-                    const isActive = row.last_activity ? (new Date() - new Date(row.last_activity) < 10 * 60 * 1000) : false;
-                    console.log(row,'Row');
+                    const isActive = row.is_active || false; // Use the is_active field from the API
+                    console.log('Admin-History: Row data:', row, 'isActive:', isActive);
                     out += `
                     <tr class="hover:bg-gray-50">
                         <td class="px-6 py-4 whitespace-nowrap">
@@ -345,7 +402,7 @@
                             ${lastActive}
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                            <button onclick="openChat('${encodeURIComponent(row.session_id || row.visitor_ip)}')" class="text-indigo-600 hover:text-indigo-900 mr-4">
+                            <button onclick="openChat('${encodeURIComponent(row.visitor_ip)}')" class="text-indigo-600 hover:text-indigo-900 mr-4" title="Open chat with ${ip}">
                                 <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
@@ -467,12 +524,259 @@
 
             // Global function to open chat
             window.openChat = function(id) {
-
-                window.location.href = '/admin/chat?visitor=' + id;
+                console.log('Admin-History: Opening chat with ID:', id);
+                // Use session_id if available, otherwise fall back to IP address
+                window.location.href = '/admin/chat?visitor=' + encodeURIComponent(id);
             };
+
+            // Test function to manually update status (for debugging)
+            window.testStatusUpdate = function(ip, isOnline) {
+                console.log('Testing status update for IP:', ip, 'isOnline:', isOnline);
+                updateOnlineStatusByIP(ip, isOnline);
+            };
+
+            // Debug function to check data
+            window.debugData = function() {
+                console.log('=== DEBUG DATA ===');
+                console.log('All data:', allData);
+                console.log('Filtered data:', filteredData);
+                console.log('Current time filter:', timeFilter.value);
+                console.log('Current search term:', search.value);
+                console.log('Current page:', currentPage);
+                console.log('Items per page:', itemsPerPage);
+
+                // Force refresh
+                console.log('Forcing data refresh...');
+                fetchHistory();
+            };
+
+            // Enhanced real-time visitor status tracking
+            console.log('Admin-History: Initializing enhanced real-time tracking...');
+
+            // Wait for Echo to be available
+            function waitForEcho() {
+                if (window.Echo) {
+                    console.log('Admin-History: Echo is available, joining public channel...');
+
+                    // Listen to visitor online/offline events with enhanced handling
+                    window.Echo.channel('visitors.public')
+                        .listen('visitor.online', (e) => {
+                            console.log('Admin-History: Visitor came online event received:', e);
+                            console.log('Admin-History: Event visitor data:', e.visitor);
+                            if (e.visitor && e.visitor.ip_address) {
+                                console.log('Admin-History: Processing online event for IP:', e.visitor.ip_address);
+                                // Use enhanced status update function
+                                updateVisitorStatusInHistoryPage(e.visitor.ip_address, true);
+                                // Refresh the history data to get updated status and show all visitors
+                                setTimeout(() => {
+                                    console.log('Admin-History: Refreshing history data after online event...');
+                                    fetchHistory();
+                                }, 500);
+                            } else {
+                                console.log('Admin-History: No visitor data or IP address in online event');
+                            }
+                        })
+                        .listen('visitor.offline', (e) => {
+                            console.log('Admin-History: Visitor went offline event received:', e);
+                            console.log('Admin-History: Event visitor data:', e.visitor);
+                            if (e.visitor && e.visitor.ip_address) {
+                                console.log('Admin-History: Processing offline event for IP:', e.visitor.ip_address);
+                                // Use enhanced status update function
+                                updateVisitorStatusInHistoryPage(e.visitor.ip_address, false);
+                                // Refresh the history data to get updated status and show all visitors
+                                setTimeout(() => {
+                                    console.log('Admin-History: Refreshing history data after offline event...');
+                                    fetchHistory();
+                                }, 500);
+                            } else {
+                                console.log('Admin-History: No visitor data or IP address in offline event');
+                            }
+                        })
+                        .error((error) => {
+                            console.error('Admin-History: Public channel error:', error);
+                        });
+                } else {
+                    console.log('Admin-History: Echo not ready yet, retrying in 500ms...');
+                    setTimeout(waitForEcho, 500);
+                }
+            }
+
+            // Start waiting for Echo
+            waitForEcho();
 
             // Initial load
             fetchHistory();
+
+            // Auto refresh visitor status every 10 seconds
+            setInterval(function() {
+                console.log('Admin-History: Auto-refreshing visitor status...');
+                // Refresh the history data to get updated status
+                fetchHistory();
+            }, 10000);
+
+            // Function to update active visitors count in real-time
+            function updateActiveVisitorsCountInHistory(count = null) {
+                console.log('Admin-History: Updating active visitors count, count provided:', count);
+                if (count !== null) {
+                    // Update the active chats count in the stats card
+                    const activeChatsElement = document.getElementById('activeChats');
+                    if (activeChatsElement) {
+                        activeChatsElement.textContent = count;
+                        console.log('Admin-History: Updated active chats count to:', count);
+
+                        // Add visual feedback
+                        activeChatsElement.style.color = '#059669';
+                        setTimeout(() => {
+                            activeChatsElement.style.color = '';
+                        }, 1000);
+                    } else {
+                        console.log('Admin-History: Active chats element not found');
+                    }
+                } else {
+                    // Fetch updated count from server
+                    console.log('Admin-History: Fetching updated count from server...');
+                    fetch('/admin/visitors/active')
+                        .then(response => response.json())
+                        .then(visitors => {
+                            console.log('Admin-History: Fetched active visitors:', visitors);
+                            // Filter to only show truly online visitors
+                            const onlineVisitors = visitors.filter(visitor => {
+                                const isActive = visitor.is_active === true ||
+                                    (visitor.last_activity && new Date(visitor.last_activity) > new Date(Date.now() - 60000));
+                                return isActive;
+                            });
+
+                            console.log('Admin-History: Online visitors count:', onlineVisitors.length);
+                            updateActiveVisitorsCountInHistory(onlineVisitors.length);
+                        })
+                        .catch(error => {
+                            console.error('Admin-History: Error fetching active visitors:', error);
+                        });
+                }
+            }
         });
+
+        // Enhanced function to update online status by IP address
+        function updateOnlineStatusByIP(ipAddress, isOnline) {
+            console.log('Admin-History: Updating status for IP:', ipAddress, 'isOnline:', isOnline);
+            const rows = document.querySelectorAll('#historyBody tr');
+            console.log('Admin-History: Found rows:', rows.length);
+
+            let updated = false;
+            rows.forEach((row, index) => {
+                // Find rows that contain this IP address
+                const ipCell = row.querySelector('td:first-child .text-sm.font-medium');
+                console.log(`Admin-History: Row ${index}:`, ipCell ? ipCell.textContent : 'No IP cell found');
+
+                if (ipCell && ipCell.textContent === ipAddress) {
+                    console.log('Admin-History: Found matching IP row for:', ipAddress);
+                    const statusCell = row.querySelector('td:nth-child(3)');
+                    if (statusCell) {
+                        statusCell.innerHTML = `
+                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${isOnline ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}">
+                                ${isOnline ? 'Online' : 'Offline'}
+                            </span>
+                        `;
+                        console.log('Admin-History: Updated status for IP:', ipAddress, 'to:', isOnline ? 'Online' : 'Offline');
+                        updated = true;
+
+                        // Add visual feedback for status change
+                        row.style.backgroundColor = isOnline ? '#f0f9ff' : '#fef3c7';
+                        setTimeout(() => {
+                            row.style.backgroundColor = '';
+                        }, 2000);
+                    } else {
+                        console.log('Admin-History: Status cell not found for IP:', ipAddress);
+                    }
+                }
+            });
+
+            // Also update the data array to reflect the status change
+            if (allData && allData.length > 0) {
+                allData.forEach(visitor => {
+                    if (visitor.visitor_ip === ipAddress) {
+                        visitor.is_active = isOnline;
+                        visitor.last_activity = new Date().toISOString();
+                        console.log('Admin-History: Updated visitor data for IP:', ipAddress);
+                    }
+                });
+            }
+
+            // Update statistics immediately
+            updateStats(allData);
+
+            if (!updated) {
+                console.log('Admin-History: No matching row found for IP:', ipAddress, '- may need to refresh data');
+            }
+        }
+
+
+        // Function to update visitor status in history page
+        function updateVisitorStatusInHistoryPage(visitorIp, isOnline = true) {
+            console.log('Admin-History: Updating visitor status:', visitorIp, 'isOnline:', isOnline);
+
+            // Update any visitor status indicators if they exist
+            const visitorElements = document.querySelectorAll('[data-visitor-ip="' + visitorIp + '"]');
+            visitorElements.forEach(element => {
+                const statusDot = element.querySelector('.w-3.h-3, .status-dot');
+                const statusText = element.querySelector('.status-text');
+
+                if (statusDot) {
+                    statusDot.className = `w-3 h-3 ${isOnline ? 'bg-green-500' : 'bg-gray-400'} rounded-full mr-2 status-dot`;
+                }
+
+                if (statusText) {
+                    statusText.textContent = isOnline ? 'Online' : 'Offline';
+                    statusText.className = `text-xs font-medium ${isOnline ? 'text-green-600' : 'text-gray-500'} status-text`;
+                }
+            });
+
+            // Update the main table status
+            updateOnlineStatusByIP(visitorIp, isOnline);
+
+            // Update active visitors count
+            updateActiveVisitorsCountInHistory();
+
+            // Update statistics immediately
+            if (allData && allData.length > 0) {
+                updateStats(allData);
+            }
+
+            // Show notification
+            showNotification(`Visitor ${visitorIp} is now ${isOnline ? 'online' : 'offline'}`);
+
+            // Force a complete refresh of the table to ensure all visitors are shown
+            console.log('Admin-History: Forcing complete table refresh...');
+            setTimeout(() => {
+                fetchHistory();
+            }, 1000);
+        }
+
+        // Function to show notifications
+        function showNotification(message) {
+            // Create notification element
+            const notification = document.createElement('div');
+            notification.className = 'fixed top-4 right-4 bg-blue-600 text-white px-6 py-3 rounded-lg shadow-lg z-50 transform transition-all duration-300 translate-x-full';
+            notification.textContent = message;
+
+            // Add to body
+            document.body.appendChild(notification);
+
+            // Animate in
+            setTimeout(() => {
+                notification.classList.remove('translate-x-full');
+            }, 100);
+
+            // Remove after 3 seconds
+            setTimeout(() => {
+                notification.classList.add('translate-x-full');
+                setTimeout(() => {
+                    if (notification.parentNode) {
+                        notification.parentNode.removeChild(notification);
+                    }
+                }, 300);
+            }, 3000);
+        }
     </script>
 </x-app-layout>
+

@@ -21,11 +21,17 @@ return Application::configure(basePath: dirname(__DIR__))
             \App\Http\Middleware\VerifyCsrfToken::class,
             \Illuminate\Routing\Middleware\SubstituteBindings::class,
             \App\Http\Middleware\AssignVisitorId::class,
+
         ]);
 
         // Ensure the session is started for all web routes
         $middleware->append(\Illuminate\Session\Middleware\StartSession::class);
         $middleware->append(\App\Http\Middleware\AssignVisitorId::class);
+
+        // ✅ Custom alias for RoleMiddleware
+        $middleware->alias([
+            'role' => \App\Http\Middleware\RoleMiddleware::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //
